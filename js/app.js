@@ -49,17 +49,18 @@
   const locName = () => D ? D.loc.name : '';
   const localHour = () => +fmt(new Date(), { hour: 'numeric', hourCycle: 'h23' });
 
-  /* ---------------- stage scaling (portrait TV, pinned under the Dynamic Island) ---------------- */
+  /* ---------------- stage scaling (portrait TV, kept below the status bar / Dynamic Island) ---------------- */
   const SW = 390, SH = 760;
   function fit() {
     const vp = $('#viewport'), cs = getComputedStyle(vp);
-    const pt = parseFloat(cs.paddingTop), pb = parseFloat(cs.paddingBottom);
+    const pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0;
     const w = vp.clientWidth, h = vp.clientHeight - pt - pb;
     const s = Math.min(w / SW, h / SH);
     stage.style.transform = `translate(${(w - SW * s) / 2}px, ${pt}px) scale(${s})`;
   }
-  addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 350)); fit();
-  // stop iOS pinch / double-tap zoom
+  addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 350));
+  addEventListener('load', fit); addEventListener('pageshow', fit);
+  fit(); setTimeout(fit, 300); setTimeout(fit, 1200); // iOS sometimes reports the safe area a moment after launch
   ['gesturestart', 'gesturechange'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
 
   /* ---------------- clock ---------------- */
@@ -418,7 +419,7 @@
     }
     schedule();
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && D && LOC) { clearTimeout(refreshTimer); refreshTick(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { fit(); if (D && LOC) { clearTimeout(refreshTimer); refreshTick(); } } });
   addEventListener('online', () => { if (LOC) loadData(!D); });
 
   function afterData(first) {
@@ -471,13 +472,12 @@
   $('#demo-btn').onclick = () => chooseLoc({ demo: true, name: 'Chicago', admin: 'IL', cc: 'US', lat: 41.88, lon: -87.63 });
   $('#setup-cancel').onclick = () => setup.classList.add('hidden');
 
-  /* ---------------- audio / wake lock (iOS needs a tap first) ---------------- */
+  /* ---------------- audio / wake lock ---------------- */
   let audioUnlocked = false, wake = null;
   function requestWake() { if ('wakeLock' in navigator && !wake && !document.hidden) navigator.wakeLock.request('screen').then(w => { wake = w; w.addEventListener('release', () => wake = null); }).catch(() => { }); }
   function unlockAudio() {
     if (!audioUnlocked) {
       audioUnlocked = true;
-      // play through the ringer/silent switch on iOS 17+
       try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { }
       Music.unlock(); Music.setVolume(+S.vol);
     }
@@ -508,11 +508,11 @@
   vpEl.addEventListener('touchend', e => {
     const t = e.changedTouches[0];
     let dx = t.clientX - tx0, dy = t.clientY - ty0;
-    if (matchMedia('(orientation: landscape) and (pointer: coarse)').matches) [dx, dy] = [-dy, dx]; // app is counter-rotated
+    if (matchMedia('(orientation: landscape) and (pointer: coarse)').matches) [dx, dy] = [-dy, dx];
     if (Math.abs(dx) > 50 && Math.abs(dy) < 80 && Date.now() - tt0 < 800) { if (D) act(dx < 0 ? 'next' : 'prev'); }
     else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) showControls();
   }, { passive: true });
-  vpEl.addEventListener('click', e => { if (e.pointerType === 'mouse' || !('ontouchstart' in window)) showControls(); });
+  vpEl.addEventListener('click', () => { if (!('ontouchstart' in window)) showControls(); });
   addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     const k = e.key.toLowerCase();
@@ -538,7 +538,7 @@
     if (k === 'testalert') { updateCrawl(); buildSeq(); }
     if (k === 'units') { buildCond(); rotateCond(); }
   }));
-  $('#set-close').onclick = () => { setEl.classList.add('hidden'); if (D) { buildSeq(); show(S.mode === 'eights' && inStandby ? 0 : Math.max(0, Math.min(si, seq.length - 1))); } };
+  $('#set-close').onclick = () => { setEl.classList.add('hidden'); if (D) { buildSeq(); show(Math.max(0, Math.min(si, seq.length - 1))); } };
   $('#set-refresh').onclick = () => { setEl.classList.add('hidden'); loadData(true); };
   $('#set-loc').onclick = () => { setEl.classList.add('hidden'); openSetup(true); };
 
@@ -549,5 +549,5 @@
   else { setTitle(['Local on', 'the 8s']); pageEl.innerHTML = '<div class="box"></div>'; condEl.textContent = 'Welcome! Enter your location to tune in.'; openSetup(false); }
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => { });
-  window.RC = { show, get seq() { return seq; }, get D() { return D; }, S };
+  window.RC = { show, get seq() { return seq; }, get D() { return D; }, S, fit };
 })();

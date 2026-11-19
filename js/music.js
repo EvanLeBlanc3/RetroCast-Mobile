@@ -123,7 +123,6 @@ const Music = (() => {
       o.connect(a); a.connect(ac.destination); o.start(t + d); o.stop(t + d + .5);
     });
   }
-  // iOS suspends audio when the app is backgrounded / screen locks; resume on return
   function unlock() { init(); if (ac.state !== 'running') ac.resume(); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden && ac && running && ac.state !== 'running') ac.resume(); });
   return { start, stop, setVolume, duck, beep, unlock, get running() { return running; } };

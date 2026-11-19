@@ -14,6 +14,15 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="css/style.css">
+<script>
+  /* Detect iPhone home-screen mode before first paint so the header is never drawn under the status bar. */
+  (function () {
+    var ios = /iPhone|iPod/.test(navigator.userAgent);
+    var sa = navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    if (ios) document.documentElement.classList.add('ios');
+    if (ios && sa) document.documentElement.classList.add('ios-standalone');
+  })();
+</script>
 </head>
 <body>
 <div id="app">
@@ -36,7 +45,6 @@
     </div>
   </div>
 
-  <!-- tap-to-show controls -->
   <div id="controls" class="hidden">
     <button data-act="prev" aria-label="Previous"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="4" y="5" width="3" height="14"/><path d="M20 5v14L8 12z"/></svg></button>
     <button data-act="pause" id="btn-pause" aria-label="Pause"></button>
@@ -46,7 +54,6 @@
     <button data-act="settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1L11 21h4l.4-2.9a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></button>
   </div>
 
-  <!-- location prompt -->
   <div id="setup" class="modal">
     <div class="panel retro">
       <div class="ptitle s">ENTER YOUR LOCATION</div>
@@ -62,11 +69,10 @@
         <button id="setup-cancel" class="rbtn alt hidden">CANCEL</button>
       </div>
       <div id="loc-msg" class="s small"></div>
-      <div id="a2hs" class="small s hidden">📲 For full screen: tap <b>Share</b> → <b>Add to Home Screen</b>, then open RetroCast from your Home Screen.</div>
+      <div id="a2hs" class="small s hidden">For full screen: tap <b>Share</b> → <b>Add to Home Screen</b>, then open RetroCast from your Home Screen.</div>
     </div>
   </div>
 
-  <!-- settings -->
   <div id="settings" class="modal hidden">
     <div class="panel retro">
       <div class="ptitle s">SETTINGS</div>

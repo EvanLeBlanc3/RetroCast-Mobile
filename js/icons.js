@@ -222,7 +222,7 @@ const Icons = (() => {
   }
 
   setInterval(() => {
-    if (document.hidden) return; // save battery in the background
+    if (document.hidden) return;
     frame++;
     document.querySelectorAll('canvas.wxicon').forEach(cv => paint(cv, cv.dataset.icon, frame + (+cv.dataset.seed || 0)));
   }, 1000 / FPS);
