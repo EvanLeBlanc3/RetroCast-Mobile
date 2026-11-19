@@ -10,7 +10,10 @@
 }
 /* Home-screen app on iPhone: the status bar overlays the page. Some iOS versions report 0 for the safe area,
    which drew the header under the clock/battery – so guarantee at least 59px (Dynamic Island height). */
-html.ios-standalone { --sat: max(env(safe-area-inset-top, 0px), 59px); --gap: 14px; }
+html.ios-standalone { --sat: max(env(safe-area-inset-top, 0px), var(--sat-guess, 59px)); --gap: 14px; }
+/* The screen check sets --sat-fix / --top-adj at runtime once it has measured the real layout. */
+html.checked { --sat: var(--sat-fix); }
+html { --top-adj: 0px; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #19206a; font-family: var(--font); color: #fff;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-text-size-adjust: 100%; touch-action: manipulation; }
@@ -19,13 +22,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
 
 #app { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh;
   background: linear-gradient(180deg, #1a0d48 0, #1a0d48 30%, #19206a 70%); }
-#island-fill { position: absolute; left: 0; right: 0; top: 0; height: calc(var(--sat) + var(--gap)); background: #1a0d48; }
+#island-fill { position: absolute; left: 0; right: 0; top: 0; height: calc(var(--sat) + var(--gap) + var(--top-adj)); background: #1a0d48; }
 /* Never rotate: in landscape the whole app is counter-rotated so it stays upright. */
 @media (orientation: landscape) and (pointer: coarse) {
   #app { width: 100vh; height: 100vw; transform-origin: 0 0; transform: rotate(-90deg) translateX(-100%); }
   html.ios-standalone #app, #app { --sat: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)); --sab: 12px; }
 }
-#viewport { position: absolute; inset: 0; padding: calc(var(--sat) + var(--gap)) 0 var(--sab); }
+#viewport { position: absolute; inset: 0; padding: calc(var(--sat) + var(--gap) + var(--top-adj)) 0 var(--sab); }
 #stage {
   position: absolute; left: 0; top: 0; width: 390px; height: 760px; transform-origin: 0 0; overflow: hidden;
   font-weight: bold; font-stretch: condensed; letter-spacing: .2px; border-radius: 6px;
@@ -41,7 +44,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
   text-align: center; line-height: 1; padding-top: 5px; }
 #logo .lg1 { font-size: 21px; color: #fff; text-shadow: 2px 2px 0 #000; letter-spacing: 1px; }
 #logo .lg2, #logo .lg3 { font-size: 9.5px; color: #ffe060; letter-spacing: 2px; text-shadow: 1px 1px 0 #000; }
-#title { position: absolute; left: 80px; top: 24px; color: var(--yellow); font-size: 23px; line-height: 25px; white-space: nowrap; }
+#title { position: absolute; left: 80px; top: 24px; width: 172px; overflow: hidden; color: var(--yellow); font-size: 23px; line-height: 25px; white-space: nowrap; }
+#title > div { overflow: hidden; white-space: nowrap; }
 #title.one { top: 36px; }
 #clock { position: absolute; right: 14px; top: 26px; text-align: right; font-size: 18px; line-height: 23px; }
 
@@ -71,9 +75,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
 
 /* current conditions */
 .cc-top { position: absolute; left: 0; right: 0; top: 14px; text-align: center; }
-.cc-city { color: var(--yellow); font-size: 26px; }
+.cc-city { color: var(--yellow); font-size: 26px; white-space: nowrap; overflow: hidden; padding: 0 10px; }
 .cc-temp { font-size: 76px; line-height: 80px; }
-.cc-text { font-size: 28px; line-height: 30px; }
+.cc-text { font-size: 28px; line-height: 30px; white-space: nowrap; overflow: hidden; padding: 0 10px; }
 .cc-top canvas.wxicon { width: 160px; height: 120px; display: block; margin: 0 auto; }
 .cc-list { position: absolute; left: 34px; right: 34px; top: 300px; font-size: 22px; line-height: 32px; }
 .kv { display: flex; justify-content: space-between; white-space: nowrap; }
@@ -220,3 +224,9 @@ canvas.wxicon { image-rendering: crisp-edges; image-rendering: pixelated; }
 .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 28px; text-align: center; padding: 20px; }
 .loading .dots::after { content: ''; animation: dots 1.2s steps(4) infinite; }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+/* screen-check probe (invisible) */
+#sa-probe { position: fixed; left: 0; top: 0; width: 1px; visibility: hidden; pointer-events: none;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+#screen-report .ok { color: #9fff9f; } #screen-report .fix { color: #ffe080; }

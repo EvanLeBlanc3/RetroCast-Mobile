@@ -17,7 +17,7 @@
     ['local', 'Local Forecast'], ['extended', 'Extended Forecast'], ['week', 'The Week Ahead'],
     ['area', 'Surrounding Cities Forecast'], ['travel', 'Travel Forecast'], ['almanac', 'Almanac']
   ];
-  const DEF = { units: 'F', mode: 'loop', speed: 1, music: 1, vol: .45, voice: 0, crt: 1, beep: 1, testalert: 0, pages: {} };
+  const DEF = { units: 'F', mode: 'loop', speed: 1, music: 1, vol: .45, voice: 0, crt: 1, beep: 1, testalert: 0, topadj: 0, pages: {} };
   let S = Object.assign({}, DEF);
   try { Object.assign(S, JSON.parse(localStorage.getItem(LS('settings')) || '{}')); } catch (e) { }
   const save = () => localStorage.setItem(LS('settings'), JSON.stringify(S));
@@ -51,17 +51,120 @@
 
   /* ---------------- stage scaling (portrait TV, kept below the status bar / Dynamic Island) ---------------- */
   const SW = 390, SH = 760;
+  let scale = 1;
   function fit() {
     const vp = $('#viewport'), cs = getComputedStyle(vp);
     const pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0;
     const w = vp.clientWidth, h = vp.clientHeight - pt - pb;
-    const s = Math.min(w / SW, h / SH);
-    stage.style.transform = `translate(${(w - SW * s) / 2}px, ${pt}px) scale(${s})`;
+    scale = Math.min(w / SW, h / SH);
+    const dpr = window.devicePixelRatio || 1, snap = v => Math.round(v * dpr) / dpr; // whole device pixels = sharper text
+    stage.style.transform = `translate(${snap((w - SW * scale) / 2)}px, ${snap(pt)}px) scale(${scale})`;
   }
-  addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 350));
-  addEventListener('load', fit); addEventListener('pageshow', fit);
-  fit(); setTimeout(fit, 300); setTimeout(fit, 1200); // iOS sometimes reports the safe area a moment after launch
   ['gesturestart', 'gesturechange'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+
+  /* ---------------- SCREEN CHECK ----------------
+     Runs every time the app opens or comes back to the front (and on rotation/resize):
+       1. Measures the real status-bar / Dynamic Island / home-bar areas reported by iOS.
+       2. Falls back to a per-model guess when iOS reports 0 (a known home-screen-app glitch).
+       3. Measures where the header, clock, title and bottom band actually landed, and pushes the
+          picture down/shrinks it until nothing sits under the status bar or off the edge.
+       4. Uses elementFromPoint to confirm nothing (another layer) is covering the key text.
+       5. Shrinks any text that is cut off (long city names, titles, conditions) until it fits.
+     It remembers the safe value per phone so the next launch is right from the first frame. */
+  const probe = document.createElement('div'); probe.id = 'sa-probe'; document.body.appendChild(probe);
+  const root = document.documentElement;
+  const landscapeLocked = () => matchMedia('(orientation: landscape) and (pointer: coarse)').matches;
+  const modelGuess = () => { const h = Math.max(screen.width, screen.height); return h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? 50 : 20; };
+  let lastReport = { when: 0, fixes: [], issues: [], top: 0 };
+
+  function insets() {
+    const cs = getComputedStyle(probe);
+    return { top: parseFloat(cs.paddingTop) || 0, bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0, right: parseFloat(cs.paddingRight) || 0 };
+  }
+  const R = sel => { const el = $(sel); return el ? el.getBoundingClientRect() : null; };
+  function coveredBy(sel) { // is something else drawn on top of this element's centre / corners?
+    const el = $(sel); if (!el) return null;
+    const r = el.getBoundingClientRect(); if (!r.width || !r.height) return null;
+    const pts = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + 3, r.top + 3], [r.right - 3, r.top + 3]];
+    for (const [x, y] of pts) {
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return 'off-screen';
+      const hit = document.elementFromPoint(x, y);
+      if (hit && !stage.contains(hit)) return hit.id || hit.className || hit.tagName;
+    }
+    return null;
+  }
+  function fitText() { // shrink any cut-off single-line text until it fits
+    const sels = ['#t1', '#t2', '.cc-city', '.cc-text', '.tbl .c1', '.tbl .c3', '.trv .c1', '.trv .c5', '.kv', '.wk .tx', '.ext .tx', '.intro .city', '.bul .ev'];
+    let n = 0;
+    stage.querySelectorAll(sels.join(',')).forEach(el => {
+      el.style.fontSize = '';
+      let fs = parseFloat(getComputedStyle(el).fontSize), min = fs * .6, guard = 30;
+      while ((el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 2) && fs > min && guard--) { fs -= 1; el.style.fontSize = fs + 'px'; }
+      if (el.style.fontSize) n++;
+    });
+    return n;
+  }
+  function screenCheck(reason) {
+    const fixes = [], issues = [];
+    const ins = insets(), standaloneIOS = isIOS && standalone;
+    const adj = +S.topadj || 0;
+    root.style.setProperty('--top-adj', landscapeLocked() ? '0px' : adj + 'px');
+    if (!landscapeLocked()) {
+      // 1–2: decide how much room to leave at the top
+      const learned = +localStorage.getItem(LS('sat')) || 0;
+      let top = Math.max(ins.top, standaloneIOS ? modelGuess() : 0);
+      if (standaloneIOS && learned > top) top = learned;
+      if (standaloneIOS && ins.top === 0) fixes.push(`iOS reported no status-bar space, using ${top}px for this iPhone`);
+      root.style.setProperty('--sat-fix', top + 'px'); root.classList.add('checked');
+      fit();
+      // 3: verify what actually got drawn; nudge down until the header clears the status bar
+      for (let i = 0; i < 4; i++) {
+        const hdr = R('#hdr'), need = top + 4;
+        if (hdr && hdr.top < need) {
+          const bump = Math.ceil(need - hdr.top);
+          top += bump; root.style.setProperty('--sat-fix', top + 'px'); fit();
+          fixes.push(`Header was ${bump}px under the status bar — moved it down`);
+        } else break;
+      }
+      lastReport.top = top;
+      if (standaloneIOS && top > modelGuess()) { try { localStorage.setItem(LS('sat'), String(top)); } catch (e) { } }
+    } else fit();
+    // bottom / sides
+    const st = stage.getBoundingClientRect();
+    if (st.bottom > innerHeight - ins.bottom + 1 && !landscapeLocked()) issues.push('Bottom band runs into the home bar');
+    if (st.left < -1 || st.right > innerWidth + 1) issues.push('Picture is wider than the screen');
+    if (scale < .7) issues.push(`Picture is small on this screen (${Math.round(scale * 100)}%)`);
+    // 4: anything covering the important text? (skip while a menu is open)
+    const menuOpen = !$('#setup').classList.contains('hidden') || !$('#settings').classList.contains('hidden') || !$('#controls').classList.contains('hidden');
+    if (!menuOpen) ['#logo', '#title', '#clock', '#cond', '#page'].forEach(sel => { const c = coveredBy(sel); if (c) issues.push(`${sel.slice(1)} is covered (${c})`); });
+    // 5: cut-off text
+    const shrunk = fitText();
+    if (shrunk) fixes.push(`Shrunk ${shrunk} line${shrunk > 1 ? 's' : ''} of text so nothing is cut off`);
+    lastReport = { ...lastReport, when: Date.now(), fixes, issues, reason, scale, ins };
+    renderReport();
+    return lastReport;
+  }
+  function renderReport() {
+    const el = $('#screen-report'); if (!el) return;
+    const r = lastReport;
+    const head = r.issues.length ? `<span class="fix">⚠ ${r.issues.length} issue${r.issues.length > 1 ? 's' : ''} found</span>` : `<span class="ok">✓ All content visible</span>`;
+    el.innerHTML = `${head} · checked ${r.when ? new Date(r.when).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—'}` +
+      `<br>Top space ${Math.round(r.top || 0)}px · scale ${Math.round((r.scale || 1) * 100)}% · iOS insets ${Math.round(r.ins?.top || 0)}/${Math.round(r.ins?.bottom || 0)}px` +
+      (r.fixes.length ? `<br>Auto-fixed: ${r.fixes.map(esc).join('; ')}` : '') + (r.issues.length ? `<br>${r.issues.map(esc).join('; ')}` : '');
+  }
+  // run on open, on return, on rotation/resize, and again after iOS settles
+  let scTimer;
+  const scheduleCheck = (why, ms = 60) => { clearTimeout(scTimer); scTimer = setTimeout(() => screenCheck(why), ms); };
+  addEventListener('resize', () => scheduleCheck('resize'));
+  addEventListener('orientationchange', () => scheduleCheck('rotate', 350));
+  addEventListener('load', () => scheduleCheck('load'));
+  addEventListener('pageshow', () => scheduleCheck('open'));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { scheduleCheck('resume'); setTimeout(() => screenCheck('resume-late'), 900); } });
+  fit();
+  // re-fit text whenever a page/title/bottom line changes
+  let ftRaf = 0;
+  new MutationObserver(() => { cancelAnimationFrame(ftRaf); ftRaf = requestAnimationFrame(fitText); })
+    .observe(stage, { childList: true, subtree: true, characterData: true });
 
   /* ---------------- clock ---------------- */
   function tickClock() {
@@ -419,7 +522,7 @@
     }
     schedule();
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { fit(); if (D && LOC) { clearTimeout(refreshTimer); refreshTick(); } } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (D && LOC) { clearTimeout(refreshTimer); refreshTick(); } } });
   addEventListener('online', () => { if (LOC) loadData(!D); });
 
   function afterData(first) {
@@ -521,13 +624,14 @@
 
   /* ---------------- settings ---------------- */
   const setEl = $('#settings');
-  const bind = { units: '#set-units', mode: '#set-mode', speed: '#set-speed', music: '#set-music', vol: '#set-vol', voice: '#set-voice', crt: '#set-crt', beep: '#set-beep', testalert: '#set-testalert' };
+  const bind = { units: '#set-units', mode: '#set-mode', speed: '#set-speed', music: '#set-music', vol: '#set-vol', voice: '#set-voice', crt: '#set-crt', beep: '#set-beep', testalert: '#set-testalert', topadj: '#set-topadj' };
   function syncSettings() { Object.entries(bind).forEach(([k, sel]) => { $(sel).value = String(S[k]); }); document.body.classList.toggle('nocrt', !+S.crt); }
   function openSettings() {
     syncSettings();
     $('#set-pages').innerHTML = PAGE_LIST.map(([k, n]) => `<label><input type="checkbox" data-p="${k}" ${S.pages[k] !== false ? 'checked' : ''}>${n}</label>`).join('');
     $('#set-pages').querySelectorAll('input').forEach(i => i.onchange = () => { S.pages[i.dataset.p] = i.checked; save(); buildSeq(); });
     $('#credits').innerHTML = `Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0) · US observations, forecast text &amp; alerts: <a href="https://www.weather.gov/" target="_blank" rel="noopener">NOAA / National Weather Service</a>.<br>${D ? `Location: ${esc(D.loc.name)} · Source: ${esc(D.current.source)} · Conditions updated ${fmt(new Date(D.updated || D.fetched), { hour: 'numeric', minute: '2-digit', second: '2-digit' })} (every 30 sec) · Forecast updated ${fmt(new Date(D.fetched), { hour: 'numeric', minute: '2-digit' })} (every 15 min)${D.alertsSupported ? '' : ' · Severe alerts are US only'}` : ''}<br>Swipe left/right to change pages · tap for controls.<br>A fan tribute to 1990s cable weather. Not affiliated with The Weather Channel.`;
+    renderReport();
     setEl.classList.remove('hidden'); setEl.scrollTop = 0;
   }
   Object.entries(bind).forEach(([k, sel]) => $(sel).addEventListener('input', () => {
@@ -537,17 +641,20 @@
     if (k === 'music') { +S.music ? unlockAudio() : Music.stop(); updateButtons(); }
     if (k === 'testalert') { updateCrawl(); buildSeq(); }
     if (k === 'units') { buildCond(); rotateCond(); }
+    if (k === 'topadj') screenCheck('setting');
   }));
   $('#set-close').onclick = () => { setEl.classList.add('hidden'); if (D) { buildSeq(); show(Math.max(0, Math.min(si, seq.length - 1))); } };
+  $('#set-check').onclick = () => { setEl.classList.add('hidden'); setTimeout(() => { screenCheck('manual'); setEl.classList.remove('hidden'); }, 80); };
   $('#set-refresh').onclick = () => { setEl.classList.add('hidden'); loadData(true); };
   $('#set-loc').onclick = () => { setEl.classList.add('hidden'); openSetup(true); };
 
   /* ---------------- boot ---------------- */
   syncSettings(); updateButtons();
+  screenCheck('launch'); setTimeout(() => screenCheck('launch+300ms'), 300); setTimeout(() => screenCheck('launch+1.2s'), 1200);
   if (new URLSearchParams(location.search).has('demo')) LOC = { demo: true, name: 'Chicago', admin: 'IL', cc: 'US', lat: 41.88, lon: -87.63 };
   if (LOC) { setup.classList.add('hidden'); loadData(true); }
   else { setTitle(['Local on', 'the 8s']); pageEl.innerHTML = '<div class="box"></div>'; condEl.textContent = 'Welcome! Enter your location to tune in.'; openSetup(false); }
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => { });
-  window.RC = { show, get seq() { return seq; }, get D() { return D; }, S, fit };
+  window.RC = { show, get seq() { return seq; }, get D() { return D; }, S, fit, screenCheck, get report() { return lastReport; } };
 })();

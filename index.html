@@ -21,6 +21,13 @@
     var sa = navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
     if (ios) document.documentElement.classList.add('ios');
     if (ios && sa) document.documentElement.classList.add('ios-standalone');
+    /* Best guess of the status-bar height for this iPhone model (used if iOS reports 0).
+       Uses the last value the screen check learned on this phone, if there is one. */
+    if (ios && sa) {
+      var h = Math.max(screen.width, screen.height), g = h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? 50 : 20;
+      var learned = +(localStorage.getItem('retrocast-ios.sat') || 0);
+      document.documentElement.style.setProperty('--sat-guess', Math.max(g, learned) + 'px');
+    }
   })();
 </script>
 </head>
@@ -85,10 +92,16 @@
         <label>Narrator<select id="set-voice"><option value="0">Off</option><option value="1">On</option></select></label>
         <label>CRT scanlines<select id="set-crt"><option value="1">On</option><option value="0">Off</option></select></label>
         <label>Alert tone<select id="set-beep"><option value="1">On for new warnings</option><option value="0">Off</option></select></label>
+        <label>Top spacing<select id="set-topadj"><option value="0">Auto</option><option value="6">Auto + a little</option><option value="12">Auto + more</option><option value="20">Auto + lots</option></select></label>
         <label>Test red ticker<select id="set-testalert"><option value="0">Off</option><option value="1">Show a test warning</option></select></label>
       </div>
       <div class="ptitle2 s">PAGES IN THE SEGMENT</div>
       <div id="set-pages" class="pages"></div>
+      <div class="ptitle2 s">SCREEN CHECK</div>
+      <div id="screen-report" class="small s"></div>
+      <div class="row">
+        <button id="set-check" class="rbtn alt">RUN SCREEN CHECK</button>
+      </div>
       <div class="row">
         <button id="set-refresh" class="rbtn alt">REFRESH</button>
         <button id="set-loc" class="rbtn alt">LOCATION</button>
