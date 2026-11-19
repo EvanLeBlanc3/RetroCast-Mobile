@@ -31,7 +31,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
 #viewport { position: absolute; inset: 0; padding: calc(var(--sat) + var(--gap) + var(--top-adj)) 0 var(--sab); }
 #stage {
   position: absolute; left: 0; top: 0; width: 390px; height: 760px; transform-origin: 0 0; overflow: hidden;
-  font-weight: bold; font-stretch: condensed; letter-spacing: .2px; border-radius: 6px;
+  font-weight: bold; font-stretch: condensed; letter-spacing: .2px; border-radius: 0;
   background: linear-gradient(180deg, #1a0d48 0, #241562 70px, #2a3a9c 96px, #2b47ab 460px, #22328a 640px, #19206a 760px);
 }
 
@@ -51,12 +51,13 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
 
 /* ---------- page area ---------- */
 #page { position: absolute; left: 0; top: 98px; width: 390px; height: 548px; }
-.box { position: absolute; left: 12px; top: 4px; width: 366px; height: 540px;
+#stage { width: 390px; }
+.box { position: absolute; left: 12px; right: 12px; top: 4px; bottom: 4px;
   background: repeating-linear-gradient(180deg, rgba(255,255,255,.035) 0 2px, rgba(0,0,0,0) 2px 4px), linear-gradient(180deg, #3f5fd0 0%, #2e48b4 45%, #22389a 100%);
   border: 3px solid; border-color: #7f98f0 #0b1452 #0b1452 #7f98f0; box-shadow: 3px 3px 0 rgba(0,0,0,.45); }
 .box.red { background: repeating-linear-gradient(180deg, rgba(255,255,255,.04) 0 2px, rgba(0,0,0,0) 2px 4px), linear-gradient(180deg, #b82020, #7a0c0c); border-color: #ff9090 #3a0000 #3a0000 #ff9090; }
 .y { color: var(--yellow); }
-.inner { position: absolute; left: 12px; top: 4px; width: 366px; height: 540px; }
+.inner { position: absolute; left: 12px; right: 12px; top: 4px; bottom: 4px; }
 
 #dots { position: absolute; left: 0; right: 0; top: 646px; height: 4px; display: flex; justify-content: center; gap: 5px; }
 #dots i { width: 14px; height: 3px; background: rgba(255,255,255,.25); }
@@ -90,7 +91,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
 .tbl .c3 { width: 114px; padding-left: 6px; overflow: hidden; font-size: 18px; } .tbl .c4 { flex: 1; text-align: right; }
 
 /* local forecast */
-.lf { position: absolute; left: 26px; top: 20px; width: 338px; height: 508px; font-size: 25px; line-height: 32px; text-transform: uppercase; overflow: hidden; }
+.lf { position: absolute; left: 26px; right: 26px; top: 20px; bottom: 20px; font-size: 25px; line-height: 32px; text-transform: uppercase; overflow: hidden; }
 .lf .pg { position: absolute; inset: 0; }
 
 /* extended */
@@ -148,7 +149,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
 .alm .uv { margin-top: 30px; font-size: 24px; text-align: center; }
 
 /* bulletin */
-.bul { position: absolute; left: 28px; top: 22px; width: 334px; height: 506px; overflow: hidden; }
+.bul { position: absolute; left: 28px; right: 28px; top: 22px; bottom: 22px; overflow: hidden; }
 .bul .ev { font-size: 29px; line-height: 32px; animation: evblink 1.2s infinite; }
 @keyframes evblink { 0%, 65% { opacity: 1; } 66%, 100% { opacity: .1; } }
 .bul .meta { font-size: 18px; color: #ffe0a0; margin: 8px 0 12px; }

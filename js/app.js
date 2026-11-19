@@ -52,13 +52,32 @@
   /* ---------------- stage scaling (portrait TV, kept below the status bar / Dynamic Island) ---------------- */
   const SW = 390, SH = 760;
   let scale = 1;
+  /* Edge-to-edge layout: the picture is always scaled to the full screen WIDTH, so the left and right
+     sides touch the screen edges. Any height difference is absorbed by the middle forecast area:
+     taller screens get a taller panel, shorter screens get the panel contents scaled down slightly
+     (uniformly – nothing is stretched or squished). */
+  const HDR_H = 98, PAGE_H = 548, BOT_H = 108;
+  let fy = 1, stageH = SH;
+  function layout(H) {
+    const pageH = Math.max(300, H - HDR_H - 6 - BOT_H);           // visible panel height
+    fy = Math.min(1, pageH / PAGE_H);                             // shrink contents only if needed
+    pageEl.style.transformOrigin = '0 0';
+    pageEl.style.transform = fy < 1 ? `scale(${fy})` : '';
+    pageEl.style.width = (SW / fy) + 'px';                        // widen layout so scaled result is full width
+    pageEl.style.height = (pageH / fy) + 'px';
+    $('#dots').style.top = (HDR_H + pageH) + 'px';
+    $('#bottom').style.top = (HDR_H + pageH + 6) + 'px';
+    stageH = HDR_H + pageH + 6 + BOT_H;
+    stage.style.height = stageH + 'px';
+  }
   function fit() {
     const vp = $('#viewport'), cs = getComputedStyle(vp);
     const pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0;
     const w = vp.clientWidth, h = vp.clientHeight - pt - pb;
-    scale = Math.min(w / SW, h / SH);
-    const dpr = window.devicePixelRatio || 1, snap = v => Math.round(v * dpr) / dpr; // whole device pixels = sharper text
-    stage.style.transform = `translate(${snap((w - SW * scale) / 2)}px, ${snap(pt)}px) scale(${scale})`;
+    scale = w / SW;                                               // always fill the width
+    layout(h / scale);
+    const dpr = window.devicePixelRatio || 1, snap = v => Math.round(v * dpr) / dpr;
+    stage.style.transform = `translate(0px, ${snap(pt)}px) scale(${scale})`;
   }
   ['gesturestart', 'gesturechange'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
 
@@ -129,11 +148,28 @@
       lastReport.top = top;
       if (standaloneIOS && top > modelGuess()) { try { localStorage.setItem(LS('sat'), String(top)); } catch (e) { } }
     } else fit();
-    // bottom / sides
+    // EDGE-TO-EDGE: left and right sides of the picture must touch the screen edges
+    const edges = () => {
+      const vr = $('#viewport').getBoundingClientRect(), sr = stage.getBoundingClientRect();
+      return landscapeLocked()
+        ? { l: Math.abs(sr.bottom - vr.bottom), r: Math.abs(vr.top - sr.top) }   // app is counter-rotated
+        : { l: Math.abs(sr.left - vr.left), r: Math.abs(vr.right - sr.right), vl: vr.left, vr: innerWidth - vr.right };
+    };
+    let e = edges();
+    if (e.l > .5 || e.r > .5) {
+      const before = `${e.l.toFixed(1)}px left / ${e.r.toFixed(1)}px right`;
+      fit(); e = edges();
+      if ((e.vl || 0) > .5 || (e.vr || 0) > .5) { // the app container itself is narrower than the screen
+        $('#app').style.width = innerWidth + 'px'; $('#app').style.left = '0px'; fit(); e = edges();
+      }
+      if (e.l > .5 || e.r > .5) issues.push(`Gap at screen edges (${e.l.toFixed(1)}px left / ${e.r.toFixed(1)}px right)`);
+      else fixes.push(`Closed a gap at the screen edges (${before})`);
+    }
+    lastReport.edges = e;
+    // bottom
     const st = stage.getBoundingClientRect();
     if (st.bottom > innerHeight - ins.bottom + 1 && !landscapeLocked()) issues.push('Bottom band runs into the home bar');
-    if (st.left < -1 || st.right > innerWidth + 1) issues.push('Picture is wider than the screen');
-    if (scale < .7) issues.push(`Picture is small on this screen (${Math.round(scale * 100)}%)`);
+    if (fy < .78) issues.push(`Forecast panel is squeezed on this screen (${Math.round(fy * 100)}%) – try a smaller Top spacing`);
     // 4: anything covering the important text? (skip while a menu is open)
     const menuOpen = !$('#setup').classList.contains('hidden') || !$('#settings').classList.contains('hidden') || !$('#controls').classList.contains('hidden');
     if (!menuOpen) ['#logo', '#title', '#clock', '#cond', '#page'].forEach(sel => { const c = coveredBy(sel); if (c) issues.push(`${sel.slice(1)} is covered (${c})`); });
@@ -149,7 +185,8 @@
     const r = lastReport;
     const head = r.issues.length ? `<span class="fix">⚠ ${r.issues.length} issue${r.issues.length > 1 ? 's' : ''} found</span>` : `<span class="ok">✓ All content visible</span>`;
     el.innerHTML = `${head} · checked ${r.when ? new Date(r.when).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '—'}` +
-      `<br>Top space ${Math.round(r.top || 0)}px · scale ${Math.round((r.scale || 1) * 100)}% · iOS insets ${Math.round(r.ins?.top || 0)}/${Math.round(r.ins?.bottom || 0)}px` +
+      `<br>Edge-to-edge: ${r.edges && r.edges.l <= .5 && r.edges.r <= .5 ? '<span class="ok">✓ touching both sides</span>' : '<span class="fix">gap detected</span>'}` +
+      `<br>Top space ${Math.round(r.top || 0)}px · scale ${Math.round((r.scale || 1) * 100)}% · panel ${Math.round(fy * 100)}% · iOS insets ${Math.round(r.ins?.top || 0)}/${Math.round(r.ins?.bottom || 0)}px` +
       (r.fixes.length ? `<br>Auto-fixed: ${r.fixes.map(esc).join('; ')}` : '') + (r.issues.length ? `<br>${r.issues.map(esc).join('; ')}` : '');
   }
   // run on open, on return, on rotation/resize, and again after iOS settles
@@ -287,7 +324,7 @@
     el.innerHTML = `<div class="box"></div><div class="inner trv s ${withText ? 'area' : ''}"><div class="th"><span class="c1">City</span><span class="c2">&nbsp;</span><span class="c5">Weather</span><span class="c3">Lo</span><span class="c4">Hi</span></div>
       <div class="list">${rows.map(c => `<div class="tr"><span class="c1">${esc(c.name)}</span><span class="c2">${Icons.html(Icons.fromCode(c.days[k].code, true))}</span><span class="c5">${esc(Icons.textFromCode(c.days[k].code, true))}</span><span class="c3">${T(c.days[k].lo)}</span><span class="c4">${T(c.days[k].hi)}</span></div>`).join('')}</div></div>`;
     const list = el.querySelector('.list');
-    const dist = Math.max(0, rows.length * 46 - 494);
+    const dist = Math.max(0, rows.length * 46 - (el.querySelector('.trv').clientHeight - 44));
     const secs = Math.max(6, dist / 30);
     const anim = list.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(0)', offset: 1.5 / (secs + 3) }, { transform: `translateY(${-dist}px)`, offset: (secs + 1.5) / (secs + 3) }, { transform: `translateY(${-dist}px)` }], { duration: (secs + 3) * 1000 * S.speed, fill: 'forwards' });
     if (paused) anim.pause();
